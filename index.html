@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sauve Mazarine face à la ruralité !</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #ccf0ff;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+      max-width: 480px;
+    }
+    #info {
+      font-size: 1rem;
+      margin-bottom: 12px;
+      user-select: none;
+    }
+    canvas {
+      background: #ccf0ff;
+      border: 2px solid #000;
+      display: none;
+      width: 100%;
+      max-width: 480px;
+      aspect-ratio: 3 / 4;
+      border-radius: 8px;
+      touch-action: none;
+    }
+    #controls {
+      display: none;
+      margin-top: 12px;
+      gap: 10px;
+    }
+    #controls button {
+      font-size: 1.8rem;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 8px;
+      background: #007acc;
+      color: white;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    #controls button:hover {
+      background: #005fa3;
+    }
+    button {
+      font-size: 1.3rem;
+      padding: 12px 20px;
+      margin: 6px;
+      border: none;
+      border-radius: 8px;
+      background: #007acc;
+      color: white;
+      cursor: pointer;
+      max-width: 480px;
+      width: 100%;
+    }
+    #restartBtn {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sauve Mazarine face à la ruralité !</h1>
+  <p id="info">Utilisez les flèches pour monter ou descendre Mazarine !</p>
+  <button id="startBtn">Commencer</button>
+  <canvas id="gameCanvas" width="480" height="640"></canvas>
+
+  <div id="controls">
+    <button id="upBtn">⬆️</button>
+    <button id="downBtn">⬇️</button>
+  </div>
+
+  <button id="restartBtn">Rejouer</button>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const startBtn = document.getElementById('startBtn');
+      const restartBtn = document.getElementById('restartBtn');
+      const upBtn = document.getElementById('upBtn');
+      const downBtn = document.getElementById('downBtn');
+      const controls = document.getElementById('controls');
+      const info = document.getElementById('info');
+
+      const playerEmoji = '👩‍🦰';
+      const obstacleEmojis = ['🚜', '🐄', '🐓', '🧑‍🌾', '🥩', '🛠️', '🛁', '🏍️', '🛢️'];
+      let obstacles = [];
+      let lives = 3;
+      let timer = 40;
+      let gameRunning = false;
+      let gameOver = false;
+      let gameLoopId;
+      let obstacleInterval, timerInterval;
+
+      const obstacleSpeed = 6;
+      const spawnIntervalMs = 600;
+
+      const player = {
+        x: 80,
+        y: 300,
+        size: 40,
+        speed: 20
+      };
+
+      function drawPlayer() {
+        ctx.font = `${player.size}px Arial`;
+        ctx.textBaseline = "top";
+        ctx.fillText(playerEmoji, player.x, player.y);
+      }
+
+      function drawObstacles() {
+        ctx.font = "32px Arial";
+        for (let obs of obstacles) {
+          ctx.fillText(obs.emoji, obs.x, obs.y);
+          obs.x -= obstacleSpeed;
+        }
+        obstacles = obstacles.filter(obs => obs.x + 32 > 0);
+      }
+
+      function spawnObstacle() {
+        const emoji = obstacleEmojis[Math.floor(Math.random() * obstacleEmojis.length)];
+        const y = Math.random() * (canvas.height - 50);
+        obstacles.push({ x: canvas.width, y: y, emoji: emoji });
+      }
+
+      function detectCollision() {
+        for (let obs of obstacles) {
+          const dx = player.x - obs.x;
+          const dy = player.y - obs.y;
+          if (Math.abs(dx) < 32 && Math.abs(dy) < 32) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function drawHUD() {
+        ctx.fillStyle = 'black';
+        ctx.font = '18px Arial';
+        ctx.fillText(`Vies : ${lives}`, 10, 25);
+        ctx.fillText(`Temps : ${timer}s`, canvas.width - 110, 25);
+      }
+
+      function wrapText(text, maxWidthPx) {
+        const words = text.split(' ');
+        let lines = [];
+        let currentLine = '';
+        for (const word of words) {
+          const testLine = currentLine + (currentLine === '' ? '' : ' ') + word;
+          const testWidth = ctx.measureText(testLine).width;
+          if (testWidth > maxWidthPx && currentLine !== '') {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        if (currentLine !== '') lines.push(currentLine);
+        return lines;
+      }
+
+      function roundRect(ctx, x, y, width, height, radius = 20) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function drawEndMessage(message) {
+        const padding = 30;
+        const width = canvas.width * 0.8;
+        const height = 220;
+        const x = (canvas.width - width) / 2;
+        const y = (canvas.height - height) / 2;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#fff';
+        roundRect(ctx, x, y, width, height, 20);
+
+        ctx.fillStyle = '#111';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        const lines = wrapText(message, width - 2 * padding);
+        for (let i = 0; i < lines.length; i++) {
+          ctx.fillText(lines[i], x + padding, y + padding + i * 28);
+        }
+      }
+
+      function updateGame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawPlayer();
+        drawObstacles();
+        drawHUD();
+
+        if (detectCollision()) {
+          lives--;
+          obstacles = [];
+          if (lives <= 0) {
+            gameRunning = false;
+            clearInterval(obstacleInterval);
+            clearInterval(timerInterval);
+            drawEndMessage("Tu as perdu ! Tu es devenu un misérable paysan nivernais. Rejoue pour une autre chance !");
+            restartBtn.style.display = 'block';
+            return;
+          }
+        }
+
+        if (timer <= 0) {
+          gameRunning = false;
+          clearInterval(obstacleInterval);
+          clearInterval(timerInterval);
+          drawEndMessage("Félicitations ! Tu as tenu 40s. Te voilà un bobo écolo socialo !");
+          restartBtn.style.display = 'block';
+          return;
+        }
+
+        if (gameRunning) {
+          gameLoopId = requestAnimationFrame(updateGame);
+        }
+      }
+
+      function startGame() {
+        lives = 3;
+        timer = 40;
+        obstacles = [];
+        player.y = 300;
+        gameRunning = true;
+        restartBtn.style.display = 'none';
+        startBtn.style.display = 'none';
+        canvas.style.display = 'block';
+        controls.style.display = 'flex';
+        info.textContent = "Utilise les flèches pour monter ou descendre Mazarine !";
+
+        obstacleInterval = setInterval(spawnObstacle, spawnIntervalMs);
+        timerInterval = setInterval(() => {
+          timer--;
+        }, 1000);
+
+        updateGame();
+      }
+
+      // Contrôles boutons
+      upBtn.addEventListener('click', () => {
+        player.y -= player.speed;
+        if (player.y < 0) player.y = 0;
+      });
+
+      downBtn.addEventListener('click', () => {
+        player.y += player.speed;
+        if (player.y > canvas.height - player.size) player.y = canvas.height - player.size;
+      });
+
+      startBtn.addEventListener('click', startGame);
+      restartBtn.addEventListener('click', startGame);
+    });
+  </script>
+</body>
+</html>
